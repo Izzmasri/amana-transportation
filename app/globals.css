@@ -26,3 +26,20 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Bus Icon Styles */
+.bus-icon {
+  background: none;
+  border: none;
+}
+
+.bus-icon svg {
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+}
+
+/* Bus Stop Icons */
+.bus-stop-icon,
+.bus-stop-icon-selected {
+  background: none;
+  border: none;
+}
