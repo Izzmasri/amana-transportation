@@ -1,12 +1,11 @@
 "use client";
 
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Polyline, Popup, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L, { LatLngTuple } from "leaflet";
-import { useState, useEffect, useRef } from 'react';
 
-// Icons// Bus Icon - Simple black bus icon
+// Bus Icon
 const busIcon = L.divIcon({
   className: 'bus-icon',
   html: `
@@ -21,6 +20,7 @@ const busIcon = L.divIcon({
   popupAnchor: [0, -15],
 });
 
+// Stop Icons
 const stopIcon = L.divIcon({
   className: 'bus-stop-icon',
   iconSize: [12, 12],
@@ -35,7 +35,7 @@ const stopIconSelected = L.divIcon({
   html: '<div class="w-4 h-4 rounded-full bg-red-600 border-2 border-white shadow-lg"></div>'
 });
 
-// Add some CSS for the markers
+// CSS for map markers
 const mapStyles = `
   .bus-stop-icon { background: transparent !important; border: none !important; }
   .bus-stop-icon-selected { background: transparent !important; border: none !important; }
@@ -44,28 +44,25 @@ const mapStyles = `
   }
 `;
 
-// Component to auto-fit the map to show all markers
-// Update the FitBounds component to accept padding prop
-// Update the FitBounds component to use useMemo for padding
 function FitBounds({ 
-    positions, 
-    padding = [50, 50] 
-  }: { 
-    positions: LatLngTuple[]; 
-    padding?: [number, number]; 
-  }) {
-    const map = useMap();
-    const memoizedPadding = React.useMemo(() => padding, [padding[0], padding[1]]);
-    
-    useEffect(() => {
-      if (positions.length > 0) {
-        const bounds = L.latLngBounds(positions);
-        map.fitBounds(bounds, { padding: memoizedPadding });
-      }
-    }, [map, positions, memoizedPadding]);
-    
-    return null;
-  }
+  positions, 
+  padding = [50, 50] 
+}: { 
+  positions: LatLngTuple[]; 
+  padding?: [number, number]; 
+}) {
+  const map = useMap();
+  const memoizedPadding = React.useMemo(() => padding, [padding[0], padding[1]]);
+  
+  useEffect(() => {
+    if (positions.length > 0) {
+      const bounds = L.latLngBounds(positions);
+      map.fitBounds(bounds, { padding: memoizedPadding });
+    }
+  }, [map, positions, memoizedPadding]);
+  
+  return null;
+}
 
 interface BusStop {
   latitude: number;
@@ -91,61 +88,63 @@ interface BusMapProps {
 export default function BusMap({ routes, activeRouteId }: BusMapProps) {
   const [selectedStop, setSelectedStop] = useState<number | null>(null);
   const mapRef = useRef<L.Map>(null);
+  const [busStopTimes, setBusStopTimes] = useState<{[key: string]: string}>({});
 
-  // Get all bus stops from all routes or just the active route
+  useEffect(() => {
+    // This code only runs on the client side
+    const now = new Date();
+    const times: {[key: string]: string} = {};
+    
+    routes.forEach(route => {
+      route.bus_stops.forEach((_, idx) => {
+        const nextHour = (now.getHours() % 12) + 1;
+        const nextMinute = Math.floor(Math.random() * 60).toString().padStart(2, '0');
+        const ampm = now.getHours() >= 12 ? 'PM' : 'AM';
+        times[`${route.id}-${idx}`] = `${nextHour}:${nextMinute} ${ampm}`;
+      });
+    });
+    
+    setBusStopTimes(times);
+  }, [routes]);
+
+  const getBusDetails = (bus: BusRoute) => {
+    return {
+      id: bus.id,
+      name: bus.name,
+      status: bus.id % 3 === 0 ? 'Maintenance' : 'In Service',
+      capacity: 50,
+      currentPassengers: Math.floor(Math.random() * 50) + 1,
+      nextStop: bus.bus_stops[1]?.name || 'Central Station'
+    };
+  };
+
+  const handleMarkerClick = (index: number) => {
+    setSelectedStop(selectedStop === index ? null : index);
+  };
+
   const allStops = activeRouteId
     ? routes.find(route => route.id === activeRouteId)?.bus_stops || []
     : routes.flatMap(route => route.bus_stops);
-  
-  // Get the active route if one is selected
+
   const activeRoute = activeRouteId 
     ? routes.find(route => route.id === activeRouteId)
     : null;
 
-  // Get routes to show buses for (all or just the active one)
   const visibleBuses = activeRouteId
     ? routes.filter(route => route.id === activeRouteId)
     : routes;
 
-  // Prepare positions for the complete route
   const routePositions: LatLngTuple[] = allStops.map(stop => [
     stop.latitude,
     stop.longitude
   ]);
 
-  // Handle marker click
-  const handleMarkerClick = (index: number) => {
-    setSelectedStop(selectedStop === index ? null : index);
-  };
-
-  // Calculate bounds to fit all markers
-  const calculateBounds = (): LatLngTuple[] => {
-    const lats = allStops.map(stop => stop.latitude);
-    const lngs = allStops.map(stop => stop.longitude);
-    return [
-      [Math.min(...lats), Math.min(...lngs)],
-      [Math.max(...lats), Math.max(...lngs)]
-    ];
-  };
-
   return (
-    <div className="h-[600px] w-full rounded-lg overflow-hidden shadow-lg">
+    <div className="relative w-full" style={{ height: '600px' }}>
       <style>{mapStyles}</style>
-      
-      <div className="bg-gray-900 text-white p-4">
-        <div className="flex justify-between items-center">
-          <h3 className="text-xl font-bold">
-            {activeRoute ? activeRoute.name : 'All Bus Routes'}
-          </h3>
-          <span className="px-3 py-1 bg-blue-600 rounded-full text-sm">
-            In Service
-          </span>
-        </div>
-      </div>
-      
-      <MapContainer
-        center={[3.1417, 101.6197]} // Center of all the points
-        zoom={16}
+      <MapContainer 
+        center={[3.1390, 101.6869]} 
+        zoom={15} 
         style={{ height: '100%', width: '100%' }}
         ref={mapRef}
       >
@@ -153,58 +152,97 @@ export default function BusMap({ routes, activeRouteId }: BusMapProps) {
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         />
+        
+        {routes.map((route) => {
+          const details = getBusDetails(route);
+          const capacityPercentage = Math.round((details.currentPassengers / details.capacity) * 100);
+          
+          return (
+            <React.Fragment key={route.id}>
+              <Marker
+                position={[route.current_location.latitude, route.current_location.longitude]}
+                icon={busIcon}
+              >
+                <Popup className="w-64">
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <h3 className="font-bold text-lg">{route.name}</h3>
+                      <span className={`px-2 py-1 text-xs rounded-full ${
+                        details.status === 'In Service' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                      }`}>
+                        {details.status}
+                      </span>
+                    </div>
+                    
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-500">Capacity:</span>
+                        <span>{details.currentPassengers}/{details.capacity}</span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div 
+                          className={`h-2 rounded-full ${
+                            capacityPercentage > 80 ? 'bg-red-500' : 'bg-blue-500'
+                          }`}
+                          style={{ width: `${capacityPercentage}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                    
+                    <div className="text-sm">
+                      <p className="text-gray-500">Next Stop:</p>
+                      <p className="font-medium">{details.nextStop}</p>
+                    </div>
+                  </div>
+                </Popup>
+              </Marker>
 
-        {/* Auto-fit the map to show all markers */}
-        <FitBounds positions={calculateBounds()} padding={[50, 50]} />
+              {route.bus_stops.map((stop, idx) => {
+                const stopKey = `${route.id}-${idx}`;
+                
+                return (
+                  <Marker
+                    key={stopKey}
+                    position={[stop.latitude, stop.longitude]}
+                    icon={idx === selectedStop ? stopIconSelected : stopIcon}
+                    eventHandlers={{ click: () => handleMarkerClick(idx) }}
+                  >
+                    <Popup className="w-48">
+                      <div className="space-y-2">
+                        <div className="font-semibold text-center">
+                          {stop.name || `Stop ${idx + 1}`}
+                        </div>
+                        <div className="border-t border-gray-200 pt-2">
+                          <div className="flex justify-between items-center text-sm">
+                            <span className="text-gray-600">Next Bus:</span>
+                            <span className="font-medium">
+                              {busStopTimes[stopKey] || 'Loading...'}
+                            </span>
+                          </div>
+                          <div className="mt-1 text-xs text-gray-500">
+                            Route: {route.name}
+                          </div>
+                        </div>
+                      </div>
+                    </Popup>
+                  </Marker>
+                );
+              })}
+            </React.Fragment>
+          );
+        })}
 
-        {/* Main Route Line - Connect all points */}
         {routePositions.length > 1 && (
           <Polyline
             positions={routePositions}
-            color="#3b82f6"
-            weight={4}
-            opacity={0.8}
+            pathOptions={{
+              color: '#3b82f6',
+              weight: 4,
+            }}
           />
         )}
 
-        {/* Bus Stops */}
-        {allStops.map((stop, index) => (
-          <Marker
-            key={`stop-${index}`}
-            position={[stop.latitude, stop.longitude]}
-            icon={selectedStop === index ? stopIconSelected : stopIcon}
-            eventHandlers={{
-              click: () => handleMarkerClick(index),
-            }}
-          >
-            <Popup>
-              <div className="min-w-[150px]">
-                <h4 className="font-bold text-base mb-1">
-                  {stop.name || `Stop ${index + 1}`}
-                </h4>
-              </div>
-            </Popup>
-          </Marker>
-        ))}
-
-        {/* Bus Positions - Only show visible buses */}
-        {visibleBuses.map((bus) => (
-          <Marker 
-            key={`bus-${bus.id}`}
-            position={[bus.current_location.latitude, bus.current_location.longitude]}
-            icon={busIcon}
-          >
-            <Popup>
-              <div className="text-center">
-                <h4 className="font-bold">{bus.name}</h4>
-                <p className="text-sm">Status: In Service</p>
-                <p className="text-xs mt-1">
-                  {bus.current_location.latitude.toFixed(4)}, {bus.current_location.longitude.toFixed(4)}
-                </p>
-              </div>
-            </Popup>
-          </Marker>
-        ))}
+        <FitBounds positions={allStops.map(stop => [stop.latitude, stop.longitude] as LatLngTuple)} />
       </MapContainer>
     </div>
   );
